@@ -7,7 +7,7 @@ struct ServiceError: LocalizedError {
 
 /// The hosted web player's API, which reads YouTube Music and SoundCloud and answers in small JSON lists.
 enum API {
-    static let base = "https://noctorium-music.vercel.app/api/music"
+    static let base = "https://music.noctorium.xyz/api/music"
 
     private static let session: URLSession = {
         let config = URLSessionConfiguration.default

@@ -11,7 +11,7 @@ Noctorium on the iPhone and iPad: YouTube Music and SoundCloud in one player, na
 - **In the background** — plays on with the screen locked, with the lock screen, Control Center, headphones,
   AirPlay and CarPlay's Now Playing
 
-The music comes from the hosted web player's API (`noctorium-music.vercel.app/api/music`), which reads YouTube Music
+The music comes from the hosted web player's API (`music.noctorium.xyz/api/music`), which reads YouTube Music
 and SoundCloud. A YouTube song's audio is asked for on the phone itself, the way yt-dlp asks: YouTube hands its
 addresses to the device that asks. A SoundCloud track locked to SoundCloud's own app plays as the same recording on
 YouTube Music, as the full Noctorium does.
