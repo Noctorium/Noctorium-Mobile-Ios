@@ -38,10 +38,11 @@ jobs:
 
       - name: Build the .ipa
         run: |
+          set -o pipefail
           xcodebuild -project Noctorium.xcodeproj -scheme Noctorium -configuration Release \
             -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/device \
             MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD" \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | xcbeautify || exit ${PIPESTATUS[0]}
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | xcbeautify
           mkdir -p build/dist/Payload
           cp -R build/device/Build/Products/Release-iphoneos/Noctorium.app build/dist/Payload/
           (cd build/dist && zip -qry "Noctorium-$VERSION-ios.ipa" Payload && rm -rf Payload)
@@ -55,11 +56,12 @@ jobs:
 
       - name: Test in the simulator
         run: |
+          set -o pipefail
           device="$(xcrun simctl list devices available | grep -m1 -oE 'iPhone 1[5-7][^(]*' | sed 's/ *$//')"
           echo "On $device"
           xcodebuild test -project Noctorium.xcodeproj -scheme Noctorium \
             -destination "platform=iOS Simulator,name=$device" -resultBundlePath build/Tests.xcresult \
-            CODE_SIGNING_ALLOWED=NO | xcbeautify || exit ${PIPESTATUS[0]}
+            CODE_SIGNING_ALLOWED=NO | xcbeautify
 
       - name: Screenshots
         if: always()
