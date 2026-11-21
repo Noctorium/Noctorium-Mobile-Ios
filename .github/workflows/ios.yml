@@ -1,0 +1,76 @@
+name: iOS
+
+# Builds Noctorium for iOS on a Mac: the unsigned .ipa that AltStore or SideStore installs (they sign it with the
+# listener's own Apple ID), then the tests in the simulator, whose screenshots are kept as an artifact.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version, without the v (defaults to the newest tag)'
+        required: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Version
+        run: |
+          v="${{ inputs.version }}"
+          [ -n "$v" ] || v="$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null | sed 's/^v//')"
+          [ -n "$v" ] || v="$(sed -n 's/.*MARKETING_VERSION: "\(.*\)"/\1/p' project.yml)"
+          IFS=. read -r a b c <<< "$v"
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+          echo "BUILD=$((a * 10000 + b * 100 + ${c%%-*}))" >> "$GITHUB_ENV"
+
+      - name: Project and icon
+        run: |
+          brew install xcodegen
+          # The App Store's icon is 1024 pixels square with no transparency.
+          sips -s format jpeg icon/noctorium-512.png --out /tmp/icon.jpg
+          sips -s format png -z 1024 1024 /tmp/icon.jpg --out Noctorium/Assets.xcassets/AppIcon.appiconset/AppIcon.png
+          xcodegen generate
+
+      - name: Build the .ipa
+        run: |
+          xcodebuild -project Noctorium.xcodeproj -scheme Noctorium -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/device \
+            MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | xcbeautify || exit ${PIPESTATUS[0]}
+          mkdir -p build/dist/Payload
+          cp -R build/device/Build/Products/Release-iphoneos/Noctorium.app build/dist/Payload/
+          (cd build/dist && zip -qry "Noctorium-$VERSION-ios.ipa" Payload && rm -rf Payload)
+          ls -l build/dist
+          echo "### Noctorium-$VERSION-ios.ipa — $(du -k build/dist/*.ipa | cut -f1) KB" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: noctorium-ios
+          path: build/dist/*.ipa
+
+      - name: Test in the simulator
+        run: |
+          device="$(xcrun simctl list devices available | grep -m1 -oE 'iPhone 1[5-7][^(]*' | sed 's/ *$//')"
+          echo "On $device"
+          xcodebuild test -project Noctorium.xcodeproj -scheme Noctorium \
+            -destination "platform=iOS Simulator,name=$device" -resultBundlePath build/Tests.xcresult \
+            CODE_SIGNING_ALLOWED=NO | xcbeautify || exit ${PIPESTATUS[0]}
+
+      - name: Screenshots
+        if: always()
+        run: |
+          [ -d build/Tests.xcresult ] || exit 0
+          mkdir -p build/screens
+          xcrun xcresulttool export attachments --path build/Tests.xcresult --output-path build/screens || true
+          ls -l build/screens
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: build/screens

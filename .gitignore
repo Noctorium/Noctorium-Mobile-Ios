@@ -1,0 +1,7 @@
+.DS_Store
+build/
+DerivedData/
+*.xcodeproj/
+xcuserdata/
+Noctorium/Info.plist
+Noctorium/Assets.xcassets/AppIcon.appiconset/AppIcon.png
