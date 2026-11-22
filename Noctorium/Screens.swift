@@ -215,7 +215,7 @@ struct AccountSection: View {
                 if let page = account.pageURL { Button("Open page") { openURL(page) } }
                 Button("Cancel", role: .cancel) { account.cancel() }
             } else {
-                Text(account.message ?? "Sign in with Discord, Telegram or email to count your listening and show what you play on Discord and Telegram.")
+                Text(account.message ?? "Sign in with Discord, Telegram or email to count your listening, show what you play on Discord and Telegram, and scrobble to the Last.fm and ListenBrainz linked to your account.")
                     .font(.subheadline).foregroundStyle(.secondary)
                 Button { account.signIn() } label: { Label("Sign in", systemImage: "person.crop.circle") }
             }

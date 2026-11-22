@@ -8,6 +8,11 @@ func listenCounts(heard: TimeInterval, duration: TimeInterval) -> Bool {
     heard >= (duration > 0 ? min(duration / 2, 30) : 30)
 }
 
+/// Last.fm's rule, which ListenBrainz follows: songs over half a minute, once half or four minutes are heard.
+func scrobbleCounts(heard: TimeInterval, duration: TimeInterval) -> Bool {
+    duration > 30 && heard >= min(duration / 2, 240)
+}
+
 /// The Noctorium account: signed in from the browser with a code -- Discord, Telegram or email, on the
 /// account service's own page -- as every Noctorium signs in. Once signed in, what is played here is counted, and what
 /// is playing is said, for the listener's Discord status and Telegram bio. The token is kept in the Keychain.
@@ -130,16 +135,25 @@ final class Account: ObservableObject {
     private var lastPosition: TimeInterval = 0
     private var startedAt = Date()
     private var counted = false
+    private var scrobbled = false
 
     private func ticked(_ seconds: TimeInterval) {
         guard let track = player.current else { return }
         if track.key != heardKey {
-            heardKey = track.key; heard = 0; counted = false; startedAt = Date(); lastPosition = seconds
+            heardKey = track.key; heard = 0; counted = false; scrobbled = false; startedAt = Date(); lastPosition = seconds
             return
         }
         let step = seconds - lastPosition
         lastPosition = seconds
         if player.isPlaying, step > 0, step < 2.5 { heard += step }
+        if signedIn, !scrobbled, scrobbleCounts(heard: heard, duration: player.duration) {
+            scrobbled = true
+            // Scrobbled by the service to the Last.fm and ListenBrainz linked to the account.
+            var song: [String: Any] = ["title": track.title, "artist": track.artistLine, "durationMs": Int(player.duration * 1000)]
+            song["url"] = track.sourceUrl
+            let body: [String: Any] = ["track": song, "startedAt": Int(startedAt.timeIntervalSince1970), "heardMs": Int(heard * 1000)]
+            Task { _ = await call("/api/scrobble", body: body) }
+        }
         guard signedIn, !counted, listenCounts(heard: heard, duration: player.duration) else { return }
         counted = true
         let play: [String: Any] = [
@@ -176,7 +190,8 @@ final class Account: ObservableObject {
                     t["url"] = track.sourceUrl
                     now = t
                 }
-                _ = await call("/api/now-playing", body: ["track": now])
+                // relay: the service also says it as "now playing" on the Last.fm and ListenBrainz linked to the account.
+                _ = await call("/api/now-playing", body: ["track": now, "relay": true])
                 guard track != nil else { return }
                 try? await Task.sleep(nanoseconds: 5 * 60 * 1_000_000_000)
             }

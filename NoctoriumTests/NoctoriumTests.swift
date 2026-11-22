@@ -2,6 +2,13 @@ import XCTest
 @testable import Noctorium
 
 final class NoctoriumTests: XCTestCase {
+    func testAScrobbleNeedsLastFmsOwnRule() {
+        XCTAssertTrue(scrobbleCounts(heard: 100, duration: 200))
+        XCTAssertFalse(scrobbleCounts(heard: 99, duration: 200))
+        XCTAssertTrue(scrobbleCounts(heard: 240, duration: 1200))
+        XCTAssertFalse(scrobbleCounts(heard: 30, duration: 30))
+    }
+
     func testAListenCountsAfterHalfAMinuteOrHalfAShorterSong() {
         XCTAssertFalse(listenCounts(heard: 29.9, duration: 200))
         XCTAssertTrue(listenCounts(heard: 30, duration: 200))
