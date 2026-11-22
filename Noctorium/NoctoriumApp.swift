@@ -4,11 +4,14 @@ import SwiftUI
 struct NoctoriumApp: App {
     @StateObject private var store: Store
     @StateObject private var player: Player
+    @StateObject private var account: Account
 
     init() {
         let store = Store()
+        let player = Player(store: store)
         _store = StateObject(wrappedValue: store)
-        _player = StateObject(wrappedValue: Player(store: store))
+        _player = StateObject(wrappedValue: player)
+        _account = StateObject(wrappedValue: Account(player: player))
     }
 
     var body: some Scene {
@@ -16,6 +19,7 @@ struct NoctoriumApp: App {
             ContentView()
                 .environmentObject(store)
                 .environmentObject(player)
+                .environmentObject(account)
                 .preferredColorScheme(.dark)
                 .tint(Theme.accent)
         }

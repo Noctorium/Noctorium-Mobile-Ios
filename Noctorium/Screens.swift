@@ -192,6 +192,37 @@ struct PlaylistView: View {
 
 // MARK: - Library
 
+/// The Noctorium account: sign in with a code on the service's page -- Discord, Telegram, GitHub or email -- and what
+/// plays here is counted, and shown as your Discord status and Telegram bio.
+struct AccountSection: View {
+    @EnvironmentObject private var account: Account
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        Section {
+            if account.signedIn {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Signed in as \(account.name)").font(.headline)
+                    Text("\(account.streams) listens counted").font(.caption).foregroundStyle(.secondary)
+                }
+                Button("Sign out", role: .destructive) { account.signOut() }
+            } else if let code = account.code {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Allow Noctorium in your browser. Check it shows this code:").font(.subheadline).foregroundStyle(.secondary)
+                    Text(code).font(.system(.title, design: .monospaced).weight(.bold)).textSelection(.enabled)
+                    Text("Waiting for you to allow it…").font(.caption).foregroundStyle(.secondary)
+                }
+                if let page = account.pageURL { Button("Open page") { openURL(page) } }
+                Button("Cancel", role: .cancel) { account.cancel() }
+            } else {
+                Text(account.message ?? "Sign in with Discord, Telegram, GitHub or email to count your listening and show what you play on Discord and Telegram.")
+                    .font(.subheadline).foregroundStyle(.secondary)
+                Button { account.signIn() } label: { Label("Sign in", systemImage: "person.crop.circle") }
+            }
+        } header: { Text("Noctorium account") }
+    }
+}
+
 /// Liked songs, the listener's own playlists, and what they played lately — all on the phone.
 struct LibraryView: View {
     @EnvironmentObject private var player: Player
@@ -201,6 +232,7 @@ struct LibraryView: View {
 
     var body: some View {
         List {
+            AccountSection()
             Section {
                 NavigationLink {
                     SongsView(title: "Liked songs", tracks: store.liked)

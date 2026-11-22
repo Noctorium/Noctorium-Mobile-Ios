@@ -2,6 +2,15 @@ import XCTest
 @testable import Noctorium
 
 final class NoctoriumTests: XCTestCase {
+    func testAListenCountsAfterHalfAMinuteOrHalfAShorterSong() {
+        XCTAssertFalse(listenCounts(heard: 29.9, duration: 200))
+        XCTAssertTrue(listenCounts(heard: 30, duration: 200))
+        XCTAssertTrue(listenCounts(heard: 10, duration: 20))
+        XCTAssertFalse(listenCounts(heard: 9.9, duration: 20))
+        // A song whose length is not known yet needs the full half minute.
+        XCTAssertFalse(listenCounts(heard: 29, duration: 0))
+    }
+
     func testLRCLinesAreReadInTimeOrder() {
         let lines = Lyrics.parseLRC("[00:12.50] second\n[00:01.00] first\nno stamp\n[01:02.00] third")
         XCTAssertEqual(lines.map(\.text), ["first", "second", "third"])
