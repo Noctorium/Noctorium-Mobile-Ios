@@ -8,7 +8,7 @@ func listenCounts(heard: TimeInterval, duration: TimeInterval) -> Bool {
     heard >= (duration > 0 ? min(duration / 2, 30) : 30)
 }
 
-/// The Noctorium account: signed in from the browser with a code -- Discord, Telegram, GitHub or email, on the
+/// The Noctorium account: signed in from the browser with a code -- Discord, Telegram or email, on the
 /// account service's own page -- as every Noctorium signs in. Once signed in, what is played here is counted, and what
 /// is playing is said, for the listener's Discord status and Telegram bio. The token is kept in the Keychain.
 @MainActor

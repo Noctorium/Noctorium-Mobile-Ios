@@ -192,7 +192,7 @@ struct PlaylistView: View {
 
 // MARK: - Library
 
-/// The Noctorium account: sign in with a code on the service's page -- Discord, Telegram, GitHub or email -- and what
+/// The Noctorium account: sign in with a code on the service's page -- Discord, Telegram or email -- and what
 /// plays here is counted, and shown as your Discord status and Telegram bio.
 struct AccountSection: View {
     @EnvironmentObject private var account: Account
@@ -215,7 +215,7 @@ struct AccountSection: View {
                 if let page = account.pageURL { Button("Open page") { openURL(page) } }
                 Button("Cancel", role: .cancel) { account.cancel() }
             } else {
-                Text(account.message ?? "Sign in with Discord, Telegram, GitHub or email to count your listening and show what you play on Discord and Telegram.")
+                Text(account.message ?? "Sign in with Discord, Telegram or email to count your listening and show what you play on Discord and Telegram.")
                     .font(.subheadline).foregroundStyle(.secondary)
                 Button { account.signIn() } label: { Label("Sign in", systemImage: "person.crop.circle") }
             }
