@@ -18,7 +18,12 @@ func scrobbleCounts(heard: TimeInterval, duration: TimeInterval) -> Bool {
 /// is playing is said, for the listener's Discord status and Telegram bio. The token is kept in the Keychain.
 @MainActor
 final class Account: ObservableObject {
-    static let service = URL(string: "https://service.noctorium.xyz")!
+    // Signing in and the account, and listening: two servers since 0.39, chosen by the path asked.
+    static let account = URL(string: "https://account.noctorium.xyz")!
+    static let stats = URL(string: "https://stats.noctorium.xyz")!
+    static func server(for path: String) -> URL {
+        ["/api/stats", "/api/plays", "/api/now-playing", "/api/scrobble"].contains { path == $0 || path.hasPrefix("\($0)?") } ? stats : account
+    }
 
     @Published private(set) var name = UserDefaults.standard.string(forKey: "account.name") ?? ""
     @Published private(set) var streams = 0
@@ -46,7 +51,7 @@ final class Account: ObservableObject {
     // MARK: - The service
 
     private func call(_ path: String, body: Any? = nil) async -> (Int, [String: Any])? {
-        var request = URLRequest(url: URL(string: path, relativeTo: Self.service)!)
+        var request = URLRequest(url: URL(string: path, relativeTo: Self.server(for: path))!)
         request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
