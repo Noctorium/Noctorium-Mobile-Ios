@@ -1,7 +1,19 @@
+import UIKit
 import XCTest
 @testable import Noctorium
 
 final class NoctoriumTests: XCTestCase {
+    func testAPictureBecomesA256SquareJPEG() throws {
+        let wide = UIGraphicsImageRenderer(size: CGSize(width: 600, height: 300)).image { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 600, height: 300))
+        }
+        let jpeg = try XCTUnwrap(squareJPEG(wide))
+        let back = try XCTUnwrap(UIImage(data: jpeg))
+        XCTAssertEqual(back.size.width * back.scale, 256)
+        XCTAssertEqual(back.size.height * back.scale, 256)
+    }
+
     func testAScrobbleNeedsLastFmsOwnRule() {
         XCTAssertTrue(scrobbleCounts(heard: 100, duration: 200))
         XCTAssertFalse(scrobbleCounts(heard: 99, duration: 200))

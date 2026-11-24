@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 // MARK: - Home
@@ -9,6 +10,8 @@ struct HomeView: View {
     @State private var sections: [HomeSection] = []
     @State private var failure: String?
     @State private var loading = false
+    @State private var showingAccount = false
+    @EnvironmentObject private var account: Account
 
     var body: some View {
         ScrollView {
@@ -41,6 +44,12 @@ struct HomeView: View {
             .padding(.bottom, 16)
         }
         .navigationTitle("Noctorium")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button { showingAccount = true } label: { Avatar(size: 32) }.accessibilityLabel("Noctorium account")
+            }
+        }
+        .sheet(isPresented: $showingAccount) { AccountView().environmentObject(account) }
         .navigationDestination(for: Playlist.self) { PlaylistView(playlist: $0) }
         .refreshable { await load() }
         .task { if sections.isEmpty { await load() } }
@@ -222,6 +231,169 @@ struct AccountSection: View {
         } header: { Text("Noctorium account") }
     }
 }
+
+/// The listener's round picture, or the initial of their name when there is none.
+struct Avatar: View {
+    @EnvironmentObject private var account: Account
+    var size: CGFloat
+
+    var body: some View {
+        if let url = account.avatarURL {
+            Artwork(url: url, size: size, corner: size / 2)
+        } else {
+            ZStack {
+                Circle().fill(Theme.card)
+                if account.name.isEmpty {
+                    Image(systemName: "person.fill").font(.system(size: size * 0.45)).foregroundStyle(Theme.accent)
+                } else {
+                    Text(account.name.prefix(1).uppercased()).font(.system(size: size * 0.42, weight: .bold)).foregroundStyle(Theme.accent)
+                }
+            }
+            .frame(width: size, height: size)
+        }
+    }
+}
+
+/// A picture as the 256-pixel square JPEG the account service keeps, cropped from its middle.
+func squareJPEG(_ image: UIImage, side: CGFloat = 256) -> Data? {
+    guard image.size.width > 0, image.size.height > 0 else { return nil }
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    let scale = side / min(image.size.width, image.size.height)
+    let width = image.size.width * scale
+    let height = image.size.height * scale
+    let square = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { _ in
+        image.draw(in: CGRect(x: (side - width) / 2, y: (side - height) / 2, width: width, height: height))
+    }
+    return square.jpegData(compressionQuality: 0.85)
+}
+
+/// Signing in and out, and once signed in what the account page on the service offers: the picture, the name, the
+/// email, the password and deleting, with the password and two-step code a change asks for.
+@MainActor
+struct AccountView: View {
+    @EnvironmentObject private var account: Account
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var email = ""
+    @State private var password = ""
+    @State private var code = ""
+    @State private var fresh = ""
+    @State private var confirm = ""
+    @State private var picked: PhotosPickerItem?
+    @State private var busy = false
+    @State private var status: String?
+    @State private var failed = false
+
+    private var twoStep: Bool { account.totp || account.telegramCodes }
+    private var proofs: [String: String] { ["password": password, "code": code.trimmingCharacters(in: .whitespaces)] }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if account.signedIn { signedIn } else { AccountSection() }
+            }
+            .disabled(busy)
+            .navigationTitle("Noctorium account")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .task(id: account.name + "|" + account.email) {
+                name = account.name
+                email = account.email
+            }
+            .onChange(of: picked) { item in
+                guard let item else { return }
+                picked = nil
+                run { await upload(item) }
+            }
+        }
+    }
+
+    @ViewBuilder private var signedIn: some View {
+        Section {
+            VStack(spacing: 8) {
+                Avatar(size: 96)
+                Text([account.name, account.email, "\(account.streams) listens"].filter { !$0.isEmpty }.joined(separator: " · "))
+                    .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                if let status {
+                    Text(status).font(.footnote).foregroundStyle(failed ? Color.red : Color.secondary).multilineTextAlignment(.center)
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+        Section("Picture") {
+            PhotosPicker(selection: $picked, matching: .images) { Label("Choose a photo", systemImage: "photo") }
+            if account.discordLinked { Button("Use Discord's picture") { run { await account.change("avatar-discord") } } }
+            if account.telegramLinked { Button("Use Telegram's picture") { run { await account.change("avatar-telegram") } } }
+            if account.avatarURL != nil {
+                Button("Remove the picture", role: .destructive) { run { await account.change("avatar-remove") } }
+            }
+        }
+        Section("Name") {
+            TextField("Name", text: $name)
+            Button("Save") { run { await account.change("name", ["name": name.trimmingCharacters(in: .whitespaces)]) } }
+        }
+        if account.hasPassword || twoStep {
+            Section {
+                if account.hasPassword { SecureField("Your password", text: $password) }
+                if twoStep { TextField("Two-step code", text: $code).keyboardType(.numberPad) }
+                if account.telegramCodes { Button("Send a code by Telegram") { run { await account.telegramCode() } } }
+            } header: {
+                Text("Proof")
+            } footer: {
+                Text("Changing the email or password, or deleting the account, asks for these.")
+            }
+        }
+        Section("Email") {
+            TextField("Email", text: $email).keyboardType(.emailAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
+            Button("Change email") {
+                var fields = proofs
+                fields["email"] = email.trimmingCharacters(in: .whitespaces)
+                run { await account.change("email", fields) }
+            }
+        }
+        Section(account.hasPassword ? "Password" : "Add a password") {
+            SecureField("New password", text: $fresh)
+            Button("Set password") {
+                let fields = ["current": password, "code": proofs["code"] ?? "", "password": fresh]
+                run { await account.change("password", fields) }
+            }
+        }
+        Section {
+            TextField("Type “delete my account”", text: $confirm).textInputAutocapitalization(.never).autocorrectionDisabled()
+            Button("Delete the account", role: .destructive) {
+                var fields = proofs
+                fields["confirm"] = confirm
+                run { await account.change("delete", fields) }
+            }
+        } header: {
+            Text("Delete the account")
+        } footer: {
+            Text("Everything on the account goes, for good, and every device is signed out.")
+        }
+        Section { Button("Sign out", role: .destructive) { account.signOut() } }
+    }
+
+    /// One change at a time, its outcome said under the picture.
+    private func run(_ work: @escaping @MainActor () async -> String?) {
+        busy = true
+        failed = false
+        status = "Working…"
+        Task { @MainActor in
+            let problem = await work()
+            busy = false
+            failed = problem != nil
+            status = problem ?? "Saved."
+        }
+    }
+
+    private func upload(_ item: PhotosPickerItem) async -> String? {
+        guard let data = try? await item.loadTransferable(type: Data.self), let image = UIImage(data: data),
+              let jpeg = squareJPEG(image) else { return "That picture could not be opened." }
+        return await account.upload(jpeg)
+    }
+}
+
 
 /// Liked songs, the listener's own playlists, and what they played lately — all on the phone.
 struct LibraryView: View {

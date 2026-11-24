@@ -31,6 +31,14 @@ final class Account: ObservableObject {
     @Published private(set) var pageURL: URL?
     @Published private(set) var message: String?
     @Published private(set) var token: String? = Keychain.read()
+    @Published private(set) var avatarURL = UserDefaults.standard.url(forKey: "account.avatar")
+    @Published private(set) var email = ""
+    // What the account sheet asks for and offers: proofs for a change, and the pictures it can take.
+    @Published private(set) var hasPassword = false
+    @Published private(set) var totp = false
+    @Published private(set) var telegramCodes = false
+    @Published private(set) var discordLinked = false
+    @Published private(set) var telegramLinked = false
 
     var signedIn: Bool { token != nil }
 
@@ -50,7 +58,7 @@ final class Account: ObservableObject {
 
     // MARK: - The service
 
-    private func call(_ path: String, body: Any? = nil) async -> (Int, [String: Any])? {
+    private func call(_ path: String, body: Any? = nil, jpeg: Data? = nil) async -> (Int, [String: Any])? {
         var request = URLRequest(url: URL(string: path, relativeTo: Self.server(for: path))!)
         request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -60,14 +68,32 @@ final class Account: ObservableObject {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         }
+        if let jpeg {
+            request.httpMethod = "POST"
+            request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+            request.httpBody = jpeg
+        }
         guard let reply = try? await URLSession.shared.data(for: request),
               let status = (reply.1 as? HTTPURLResponse)?.statusCode else { return nil }
         return (status, (try? JSONSerialization.jsonObject(with: reply.0)) as? [String: Any] ?? [:])
     }
 
     private func refresh() async {
-        if let me = await call("/api/auth/me"), me.0 == 401 {
-            return signOut(because: "Your Noctorium sign-in ran out. Sign in again.")
+        let me = await call("/api/auth/me")
+        if me?.0 == 401 { return signOut(because: "Your Noctorium sign-in ran out. Sign in again.") }
+        if let me, (200..<300).contains(me.0), let user = me.1["user"] as? [String: Any] {
+            name = (user["displayName"] as? String) ?? name
+            UserDefaults.standard.set(name, forKey: "account.name")
+            avatarURL = (user["avatarUrl"] as? String).flatMap(URL.init(string:))
+            UserDefaults.standard.set(avatarURL, forKey: "account.avatar")
+            email = (user["email"] as? String) ?? ""
+            hasPassword = (user["hasPassword"] as? Bool) ?? false
+            let twoStep = user["twoStep"] as? [String: Any] ?? [:]
+            totp = (twoStep["totp"] as? Bool) ?? false
+            telegramCodes = (twoStep["telegram"] as? Bool) ?? false
+            let linked = user["linked"] as? [String: Any] ?? [:]
+            discordLinked = (linked["discord"] as? Bool) ?? false
+            telegramLinked = (linked["telegram"] as? Bool) ?? false
         }
         if let stats = await call("/api/stats?range=all"), (200..<300).contains(stats.0) {
             streams = (stats.1["streams"] as? Int) ?? streams
@@ -128,9 +154,49 @@ final class Account: ObservableObject {
         Keychain.delete()
         token = nil
         name = ""
+        avatarURL = nil
+        UserDefaults.standard.removeObject(forKey: "account.avatar")
+        email = ""
+        hasPassword = false; totp = false; telegramCodes = false; discordLinked = false; telegramLinked = false
         streams = 0
         reported = ""
         message = why
+    }
+
+    // MARK: - Changing the account, as its page on the service does
+
+    /// One change of the profile -- `name`, `email`, `password`, `delete`, `avatar-discord`, `avatar-telegram` or
+    /// `avatar-remove` -- with its fields. Returns what went wrong, or nil.
+    func change(_ action: String, _ fields: [String: String] = [:]) async -> String? {
+        var body: [String: Any] = fields
+        body["action"] = action
+        let reply = await call("/api/account/profile", body: body)
+        if let problem = Self.problem(reply) { return problem }
+        // A new email or password signs every other device out; this one is handed a fresh token to stay in.
+        if let fresh = reply?.1["token"] as? String, !fresh.isEmpty {
+            Keychain.save(fresh)
+            token = fresh
+        }
+        if action == "delete" { signOut(because: "Your Noctorium account is deleted.") } else { await refresh() }
+        return nil
+    }
+
+    /// A new picture: a small square JPEG.
+    func upload(_ jpeg: Data) async -> String? {
+        if let problem = Self.problem(await call("/api/account/avatar", jpeg: jpeg)) { return problem }
+        await refresh()
+        return nil
+    }
+
+    /// Asks the Telegram bot for a two-step code.
+    func telegramCode() async -> String? {
+        Self.problem(await call("/api/account/security", body: ["action": "telegram-send"]))
+    }
+
+    private static func problem(_ reply: (Int, [String: Any])?) -> String? {
+        guard let reply else { return "The Noctorium service could not be reached. Try again." }
+        if (200..<300).contains(reply.0) { return nil }
+        return (reply.1["error"] as? String) ?? "That did not go through (\(reply.0))."
     }
 
     // MARK: - What is played: counted once it counts, and said while it plays
