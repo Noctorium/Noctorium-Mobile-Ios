@@ -100,6 +100,14 @@ final class Account: ObservableObject {
         }
     }
 
+    /// The account's full statistics over `range` (7d, 30d, 90d, 365d or all), on this phone's clock; nil when out of reach.
+    func fullStats(range: String) async -> AccountStats? {
+        let tz = TimeZone.current.secondsFromGMT() / 60
+        guard let reply = await call("/api/stats?range=\(range)&tz=\(tz)&limit=10"), (200..<300).contains(reply.0),
+              let data = try? JSONSerialization.data(withJSONObject: reply.1) else { return nil }
+        return try? JSONDecoder().decode(AccountStats.self, from: data)
+    }
+
     // MARK: - Signing in
 
     /// Signs in with a code: opens the service's page, where the listener signs in and presses Allow, and waits.

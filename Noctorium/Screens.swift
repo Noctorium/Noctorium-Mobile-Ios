@@ -11,6 +11,7 @@ struct HomeView: View {
     @State private var failure: String?
     @State private var loading = false
     @State private var showingAccount = false
+    @State private var showingStats = false
     @EnvironmentObject private var account: Account
 
     var body: some View {
@@ -46,10 +47,16 @@ struct HomeView: View {
         .navigationTitle("Noctorium")
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                Button { showingAccount = true } label: { Avatar(size: 32) }.accessibilityLabel("Noctorium account")
+                // The picture opens a choice of the account or its Stats, as in the other apps.
+                Menu {
+                    Button { showingAccount = true } label: { Label("Account", systemImage: "person.crop.circle") }
+                    Button { showingStats = true } label: { Label("Stats", systemImage: "chart.bar") }
+                } label: { Avatar(size: 32) }
+                .accessibilityLabel("Noctorium account")
             }
         }
         .sheet(isPresented: $showingAccount) { AccountView().environmentObject(account) }
+        .sheet(isPresented: $showingStats) { StatsView().environmentObject(account) }
         .navigationDestination(for: Playlist.self) { PlaylistView(playlist: $0) }
         .refreshable { await load() }
         .task { if sections.isEmpty { await load() } }
